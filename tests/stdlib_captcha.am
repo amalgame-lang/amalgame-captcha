@@ -1,0 +1,91 @@
+// Stdlib test: Amalgame.Captcha — challenge generation + verification.
+// Deterministic where it matters (verification logic), not the random
+// operands themselves (Random.FromSystem — by design, real entropy).
+
+namespace Tests
+
+import Amalgame.Captcha
+
+public class Program {
+    public static void Main(string[] args) {
+        let secret: string = "test-secret-do-not-use-in-prod"
+
+        // ── 1. Un défi a une question et un jeton non vides ───────
+        let c1: CaptchaChallenge = Captcha.NewMathChallenge(secret)
+        if (String_Length(c1.Question) > 0 && String_Length(c1.Token) > 0) {
+            Console.WriteLine("[PASS] challenge non vide")
+        } else {
+            Console.WriteLine("[FAIL] challenge non vide")
+        }
+
+        // ── 2. La question a la forme "N + N" ──────────────────────
+        if (String_IndexOf(c1.Question, " + ") > 0) {
+            Console.WriteLine("[PASS] question bien formee")
+        } else {
+            Console.WriteLine("[FAIL] question bien formee: " + c1.Question)
+        }
+
+        // ── 3. Calcule la vraie réponse depuis la question, vérifie
+        //      qu'elle est acceptée ────────────────────────────────
+        let plus: int = String_IndexOf(c1.Question, " + ")
+        let aStr: string = String_Substring(c1.Question, 0, plus)
+        let bStr: string = String_Substring(c1.Question, plus + 3, String_Length(c1.Question) - plus - 3)
+        let realAnswer: string = String_FromInt(String_ToInt(aStr) + String_ToInt(bStr))
+        if (Captcha.Verify(c1.Token, realAnswer, secret)) {
+            Console.WriteLine("[PASS] bonne reponse acceptee")
+        } else {
+            Console.WriteLine("[FAIL] bonne reponse acceptee")
+        }
+
+        // ── 4. Une mauvaise réponse est rejetée ────────────────────
+        let wrongAnswer: string = String_FromInt(String_ToInt(realAnswer) + 1)
+        if (!Captcha.Verify(c1.Token, wrongAnswer, secret)) {
+            Console.WriteLine("[PASS] mauvaise reponse rejetee")
+        } else {
+            Console.WriteLine("[FAIL] mauvaise reponse rejetee")
+        }
+
+        // ── 5. Espaces autour de la réponse tolérés ────────────────
+        if (Captcha.Verify(c1.Token, "  " + realAnswer + " ", secret)) {
+            Console.WriteLine("[PASS] espaces tolerees")
+        } else {
+            Console.WriteLine("[FAIL] espaces tolerees")
+        }
+
+        // ── 6. Un jeton altéré (réponse changée dans le payload) est
+        //      rejeté même si la "réponse" soumise correspond au
+        //      payload modifié — la signature ne correspond plus ────
+        let sep: int = String_IndexOf(c1.Token, ":")
+        let sig: string = String_Substring(c1.Token, sep + 1, String_Length(c1.Token) - sep - 1)
+        let tamperedToken: string = "999999:" + sig
+        if (!Captcha.Verify(tamperedToken, "999999", secret)) {
+            Console.WriteLine("[PASS] jeton altere rejete")
+        } else {
+            Console.WriteLine("[FAIL] jeton altere rejete")
+        }
+
+        // ── 7. Mauvais secret à la vérification rejette tout ───────
+        if (!Captcha.Verify(c1.Token, realAnswer, "autre-secret")) {
+            Console.WriteLine("[PASS] mauvais secret rejete")
+        } else {
+            Console.WriteLine("[FAIL] mauvais secret rejete")
+        }
+
+        // ── 8. Jeton malformé (pas de ":") rejeté proprement ───────
+        if (!Captcha.Verify("pas-de-separateur", "1", secret)) {
+            Console.WriteLine("[PASS] jeton malforme rejete")
+        } else {
+            Console.WriteLine("[FAIL] jeton malforme rejete")
+        }
+
+        // ── 9. Deux défis successifs ne portent pas systématiquement
+        //      le même jeton (entropie réelle, pas un test strict —
+        //      juste une vérification de non-régression grossière) ──
+        let c2: CaptchaChallenge = Captcha.NewMathChallenge(secret)
+        if (c1.Token != c2.Token || c1.Question != c2.Question) {
+            Console.WriteLine("[PASS] deux defis distincts")
+        } else {
+            Console.WriteLine("[FAIL] deux defis distincts (improbable mais verifie)")
+        }
+    }
+}

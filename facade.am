@@ -1,0 +1,79 @@
+namespace Amalgame.Captcha
+
+import Amalgame.String
+import Amalgame.Crypto
+import Amalgame.Random
+
+// ═══════════════════════════════════════════════════════
+//  captcha.am — CAPTCHA arithmétique auto-hébergé
+// ═══════════════════════════════════════════════════════
+//
+// Pas de service tiers (Google reCAPTCHA/hCaptcha/etc.) — un défi
+// "a + b = ?" généré côté serveur, signé (HMAC-SHA-256, amalgame-crypto)
+// dans un jeton auto-porteur. Aucun état serveur nécessaire pour
+// vérifier une réponse (pas de session, pas de table DB) : le jeton
+// contient déjà la réponse attendue ET sa signature, l'appelant n'a
+// qu'à le renvoyer tel quel avec la réponse saisie.
+//
+// Honnêteté sur ce que ça arrête : un bot générique qui poste dans des
+// formulaires au hasard sans parser le HTML de CHAQUE site cible ne
+// résout jamais ce défi (les deux nombres sont visibles en clair dans
+// `Question`, mais un bot de masse ne va pas écrire un parseur dédié
+// pour un site précis) — ça filtre l'écrasante majorité du spam de
+// formulaire automatisé. Ça n'arrête PAS un attaquant qui cible
+// spécifiquement ce site (un humain, ou un bot custom qui lit
+// `Question` et fait le calcul) — comme la plupart des CAPTCHA, y
+// compris ceux des géants du secteur, face à un adversaire déterminé.
+//
+// Le jeton n'a pas d'expiration ni de marque "déjà utilisé" intégrée
+// (rejouable indéfiniment tant que la réponse est correcte) — acceptable
+// pour un filtre anti-spam bas risque ; un appelant qui a besoin d'un
+// jeton à usage unique doit le tracker lui-même (ex: fenêtre de temps
+// glissante côté application).
+
+public class CaptchaChallenge {
+    public Question: string  // ex: "3 + 7" — affiché tel quel à l'utilisateur
+    public Token:    string  // opaque, à retransmettre tel quel avec la réponse
+
+    public CaptchaChallenge(string question, string token) {
+        this.Question = question
+        this.Token = token
+    }
+}
+
+public class Captcha {
+    // Nouveau défi — addition de deux entiers 1..9 (jamais de
+    // soustraction : évite tout résultat négatif, qui demanderait une
+    // convention de signe côté question pour rester non ambigu).
+    // secret : clé de signature côté appelant (ex: un secret déjà
+    // présent dans la config de l'application hôte) — jamais transmise
+    // au client, seul le jeton signé l'est.
+    public static CaptchaChallenge NewMathChallenge(string secret) {
+        let rng: Random = Random.FromSystem()
+        let a: int = rng.IntRange(1, 10)
+        let b: int = rng.IntRange(1, 10)
+        let sum: int = a + b
+        let question: string = String_FromInt(a) + " + " + String_FromInt(b)
+        let payload: string = String_FromInt(sum)
+        let sig: string = Hmac.Sha256OfStrings(secret, payload)
+        let token: string = payload + ":" + sig
+        return new CaptchaChallenge(question, token)
+    }
+
+    // Vérifie une réponse contre un jeton émis par NewMathChallenge.
+    // Rejette un jeton malformé/altéré (signature invalide, recalculée
+    // ici avec le MÊME secret — un jeton signé avec un autre secret, ou
+    // dont la réponse attendue a été modifiée en transit, ne correspond
+    // jamais) ou une réponse qui ne correspond pas à celle portée par
+    // le jeton. answer est comparée après String_Trim (espaces de
+    // saisie tolérés).
+    public static bool Verify(string token, string answer, string secret) {
+        let sep: int = String_IndexOf(token, ":")
+        if (sep < 0) { return false }
+        let payload: string = String_Substring(token, 0, sep)
+        let sig: string = String_Substring(token, sep + 1, String_Length(token) - sep - 1)
+        let expectedSig: string = Hmac.Sha256OfStrings(secret, payload)
+        if (sig != expectedSig) { return false }
+        return String_Trim(answer) == payload
+    }
+}

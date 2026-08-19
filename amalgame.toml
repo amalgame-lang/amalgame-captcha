@@ -1,0 +1,44 @@
+# Package manifest — amalgame-captcha
+#
+# Pure-Amalgame, self-hosted CAPTCHA — a stateless arithmetic challenge
+# signed with HMAC-SHA-256 (amalgame-crypto), no server-side session/DB
+# required to verify an answer. Built for CMSPress's public contact form
+# specifically to avoid depending on a third-party service (Google
+# reCAPTCHA/hCaptcha/etc.) — "presse indépendante" extends to the
+# infrastructure choices, not just the editorial line.
+#
+# Surface (v0.1):
+#   Captcha.NewMathChallenge(secret) -> CaptchaChallenge { Question, Token }
+#   Captcha.Verify(token, answer, secret) -> bool
+#
+# Token format: "<expectedAnswer>:<hmacHex>" — self-contained, no
+# expiry/single-use tracking (a low-stakes anti-spam gate, not a
+# security-critical nonce; add expiry at the call site via a timestamp
+# in `secret`/a wrapping token if a given deployment needs it).
+#
+# Out of scope (v0.1): image/distorted-text challenges (would need a
+# font rasterizer, not available in this ecosystem yet), word-riddle
+# challenges (could be a v0.2 addition, same token mechanics).
+#
+# Installation:
+#
+#   amc package add github.com/amalgame-lang/amalgame-captcha@v0.1.0
+
+[package]
+name              = "amalgame-captcha"
+version           = "0.1.0"
+license           = "Apache-2.0"
+description       = "Self-hosted, stateless arithmetic CAPTCHA (HMAC-signed) — no third-party service."
+authors           = ["Bastien Mouget"]
+required-amalgame = ">=0.7.7"
+schema-version    = 1
+
+[dependencies]
+amalgame-crypto = ">=0.8.0"
+amalgame-random = ">=0.1.0"
+
+[stdlib]
+class     = "Captcha"
+header    = "facade-stub.h"
+namespace = "Amalgame.Captcha"
+facade    = "facade.am"
